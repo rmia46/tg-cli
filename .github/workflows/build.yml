@@ -97,6 +97,7 @@ jobs:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: artifacts/${{ env.RELEASE_NAME }}-windows-latest/tg-cli.exe
           asset_name: tg-cli-windows.exe
+          asset_content_type: application/octet-stream
 
       # Upload Linux artifact
       - name: Upload Linux artifact
@@ -108,6 +109,8 @@ jobs:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: artifacts/${{ env.RELEASE_NAME }}-ubuntu-latest/tg-cli
           asset_name: tg-cli-linux
+          asset_content_type: application/octet-stream
+
 
       # Upload macOS artifact
       - name: Upload macOS artifact
@@ -119,3 +122,5 @@ jobs:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: artifacts/${{ env.RELEASE_NAME }}-macos-latest/tg-cli
           asset_name: tg-cli-macos
+          asset_content_type: application/octet-stream
+
