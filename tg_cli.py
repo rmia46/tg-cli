@@ -40,6 +40,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.completion import Completer, Completion
 from code_templates import CODE_TEMPLATES
+from emoji_map import EMOJI_MAP
 
 # ==================== CONFIGURATION ====================
 # Load environment variables from the .env file
@@ -87,6 +88,12 @@ def get_formatted_time():
     """Returns the current timestamp in HH:MM:SS format."""
     return datetime.now().strftime('%H:%M:%S')
 
+def emojify_message(message):
+    """Replaces text codes with emojis."""
+    for code, emoji in EMOJI_MAP.items():
+        message = message.replace(code, emoji)
+    return message
+
 def encode_message(message, lang):
     """
     Encodes a message into a randomized code template for a given language.
@@ -122,6 +129,7 @@ def show_help():
     console.print("  [yellow]/back[/yellow] - Return to peer selection from an active chat.")
     console.print("  [yellow]/help[/yellow] - Show this help message.")
     console.print("  [yellow]/exit[/yellow] - Log out and exit the client.")
+    console.print("  [yellow]Emoji Shortcuts[/yellow] - Type text codes (e.g., :smile:, :heart:) to convert to emojis.")
     console.print("\n[info]Messages from other chats will appear as notifications.[/info]")
     console.print(f"[info]Current language: {current_language.upper()}[/info]")
 
@@ -134,7 +142,7 @@ class DynamicCompleter(Completer):
     def get_completions(self, document, complete_event):
         text_before_cursor = document.text_before_cursor.lstrip()
         words = text_before_cursor.split()
-
+        
         # Command completion
         if text_before_cursor.startswith('/') and len(words) == 1:
             commands = ['/chat', '/togglecode', '/lang', '/photo', '/back', '/help', '/exit']
@@ -148,10 +156,21 @@ class DynamicCompleter(Completer):
             for lang in CODE_TEMPLATES.keys():
                 if lang.startswith(current_word):
                     yield Completion(lang, start_position=-len(current_word))
+                    
+        # Emoji completion
+        elif ':' in text_before_cursor:
+            current_word = text_before_cursor.split()[-1]
+            if current_word.startswith(':'):
+                for emoji_code in EMOJI_MAP.keys():
+                    if emoji_code.startswith(current_word):
+                        # The display text shows the emoji next to the code
+                        display_text = f"{emoji_code} {EMOJI_MAP[emoji_code]}"
+                        yield Completion(
+                            emoji_code,
+                            start_position=-len(current_word),
+                            display=display_text
+                        )
         
-        # Note: Contact name completion is complex and requires fetching data dynamically.
-        # It's not included here for simplicity.
-
 # ==================== MAIN LOGIC FUNCTIONS ====================
 
 async def chat_with_peer(peer_entity, session):
@@ -219,9 +238,14 @@ async def chat_with_peer(peer_entity, session):
             show_help()
             continue
 
-        message_to_send = encode_message(user_input, current_language) if is_code_mode else user_input
+        # Autocorrect emojis before sending the message
+        emojified_input = emojify_message(user_input)
+        
+        message_to_send = encode_message(emojified_input, current_language) if is_code_mode else emojified_input
         await client.send_message(peer_entity, message_to_send)
-        console.print(f"[outgoing][{get_formatted_time()}] You: {user_input}[/outgoing]")
+        
+        # Display the emojified message in your local console for consistency
+        console.print(f"[outgoing][{get_formatted_time()}] You: {emojified_input}[/outgoing]")
 
 async def handle_new_message(event):
     """Event handler for new incoming messages."""
@@ -320,4 +344,4 @@ if __name__ == '__main__':
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        console.print("[info]\nClient shut down by user.[/info]")   
+        console.print("[info]\nClient shut down by user.[/info]")
