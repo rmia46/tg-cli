@@ -86,11 +86,3 @@ Prebuilt binaries (via **PyInstaller**) are available in the [Releases](../../re
 Simply download, place alongside your `.env` file, and run — no installation required.
 
 ---
-
-## 📜 License
-
-This project is licensed under the **MIT License**.
-
----
-
-Would you like me to also **add shields.io badges** (like Python version, license, build status) to make the README more visually appealing?
