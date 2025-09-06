@@ -32,11 +32,13 @@ from telethon.tl.types import User, Channel, Chat
 from rich.console import Console
 from rich.theme import Theme
 from rich.text import Text
+from rich.panel import Panel
+from rich.rule import Rule
 from datetime import datetime
 from dotenv import load_dotenv
 from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
-from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.completion import Completer, Completion
 from code_templates import CODE_TEMPLATES
 
 # ==================== CONFIGURATION ====================
@@ -56,7 +58,11 @@ cli_theme = Theme({
     "outgoing": "green",
     "timestamp": "dim white",
     "error": "bold red",
-    "notification": "yellow"
+    "notification": "yellow",
+    "matrix_panel": "bold green on black",
+    "welcome_gradient": "bold rgb(0,255,0) on black",
+    "prompt_static": "bold green",
+    "prompt_dynamic": "bold cyan",
 })
 
 # Initialize the Rich Console with the custom theme
@@ -119,6 +125,33 @@ def show_help():
     console.print("\n[info]Messages from other chats will appear as notifications.[/info]")
     console.print(f"[info]Current language: {current_language.upper()}[/info]")
 
+# ==================== PROMPT-TOOLKIT CLASSES ====================
+
+class DynamicCompleter(Completer):
+    """
+    Provides context-aware auto-completion.
+    """
+    def get_completions(self, document, complete_event):
+        text_before_cursor = document.text_before_cursor.lstrip()
+        words = text_before_cursor.split()
+
+        # Command completion
+        if text_before_cursor.startswith('/') and len(words) == 1:
+            commands = ['/chat', '/togglecode', '/lang', '/photo', '/back', '/help', '/exit']
+            for cmd in commands:
+                if cmd.startswith(text_before_cursor):
+                    yield Completion(cmd, start_position=-len(text_before_cursor))
+        
+        # Language completion after /lang
+        elif text_before_cursor.startswith('/lang') and len(words) == 2:
+            current_word = words[-1]
+            for lang in CODE_TEMPLATES.keys():
+                if lang.startswith(current_word):
+                    yield Completion(lang, start_position=-len(current_word))
+        
+        # Note: Contact name completion is complex and requires fetching data dynamically.
+        # It's not included here for simplicity.
+
 # ==================== MAIN LOGIC FUNCTIONS ====================
 
 async def chat_with_peer(peer_entity, session):
@@ -128,15 +161,18 @@ async def chat_with_peer(peer_entity, session):
     current_peer_entity = peer_entity
     peer_name = getattr(peer_entity, "first_name", None) or "Unknown"
     
-    console.print(f"\n[bold yellow]Chat session with {peer_name} started.[/bold yellow]")
-    console.print("[info]Commands: /back, /togglecode, /lang, /photo, /help[/info]\n")
+    # Fancy panel for starting chat session
+    panel_title = f"[bold green]Chatting with: {peer_name}[/bold green]"
+    panel_content = Text.from_markup("[info]Commands: /back, /togglecode, /lang, /photo, /help[/info]\n")
+    chat_panel = Panel(panel_content, title=panel_title, border_style="matrix_panel")
+    console.print(chat_panel)
 
     while True:
         try:
             user_input = await session.prompt_async("[prompt]> ")
         except (EOFError, KeyboardInterrupt):
             current_peer_entity = None
-            console.print("[info]Exiting chat session.[/info]\n")
+            console.print(f"\n[info]Exiting chat session with {peer_name}.[/info]\n")
             break
         
         user_input = user_input.strip()
@@ -209,12 +245,13 @@ async def handle_new_message(event):
     console.print(formatted_message)
 
 async def main():
-    global client
-    global current_language
+    global client, current_language
+    
+    completer = DynamicCompleter()
     session = PromptSession(
         lexer=None, # Keep this as None for plain text input
-        completer=WordCompleter(['/chat', '/exit', '/help', '/lang', '/togglecode'], ignore_case=True),
-        complete_while_typing=True
+        completer=completer,
+        complete_while_typing=True,
     )
     
     with patch_stdout(raw=True):
@@ -222,12 +259,21 @@ async def main():
         await client.start()
         client.add_event_handler(handle_new_message, events.NewMessage)
 
+        # Fancy welcome message
+        welcome_text = Text("Welcome to the CLI Telegram Client", style="welcome_gradient")
+        console.print(Panel(welcome_text, title="🟢 🟢 🟢", title_align="right", border_style="matrix_panel"))
+        console.print(Rule(style="matrix_panel"))
+        
         console.print("[info]Logged in successfully![/info]")
         console.print("Type /chat <username or phone> to start a chat. /exit to quit.\n")
 
         while True:
             try:
-                user_input = await session.prompt_async(f"[prompt]TG ({current_language.upper()})> ")
+                # The prompt is now a rich.Text object
+                prompt_text = Text()
+                prompt_text.append(f"TG ({current_language.upper()})", style="prompt_static")
+                prompt_text.append(" > ", style="prompt_dynamic")
+                user_input = await session.prompt_async(prompt_text.plain)
             except (EOFError, KeyboardInterrupt):
                 break
                 
@@ -274,4 +320,4 @@ if __name__ == '__main__':
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        console.print("[info]\nClient shut down by user.[/info]")
+        console.print("[info]\nClient shut down by user.[/info]")   
