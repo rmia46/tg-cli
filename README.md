@@ -1,7 +1,3 @@
-Here’s a clean, professional GitHub-ready **README.md** for your CLI Telegram Client project:
-
----
-
 # 📟 CLI Telegram Client
 
 A command-line Telegram client with a **Matrix-style interface**, emoji autocorrection, and a unique **Code Mode** for sending messages in programmer-themed styles.
