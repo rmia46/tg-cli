@@ -1,0 +1,10 @@
+# Sensitive files
+.env
+*.session
+*.session-journal
+
+# Python-specific files
+pycache/
+.pytest_cache/
+.mypy_cache/
+.venv/
