@@ -39,7 +39,7 @@ A command-line Telegram client with a **Matrix-style interface**, emoji autocorr
 ```bash
 git clone https://github.com/your-username/tg-cli-project.git
 cd tg-cli-project
-
+```
 # Install dependencies
 ```bash
 pip install telethon rich python-dotenv prompt-toolkit
