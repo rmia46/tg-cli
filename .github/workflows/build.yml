@@ -1,54 +1,64 @@
 name: Build and Release Binaries
 
-permissions:
-  contents: write
-
+# Trigger on tag pushes starting with 'v' or manual trigger
 on:
   push:
     tags:
-      - 'v*' # Trigger when a new tag like v1.0.0 is pushed
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write  # Needed to create releases and upload assets
 
 jobs:
   build:
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ['3.11']
-    runs-on: ${{ matrix.os }}
 
     steps:
+      # Checkout code
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Set up Python
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
+      # Install dependencies
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller telethon rich python-dotenv prompt-toolkit
 
+      # Build with PyInstaller
       - name: Build with PyInstaller
         run: |
-          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
             pyinstaller tg_cli.py --onefile --name tg-cli --add-data "code_templates.py;." --add-data "emoji_map.py;."
           else
             pyinstaller tg_cli.py --onefile --name tg-cli --add-data "code_templates.py:." --add-data "emoji_map.py:."
           fi
+        shell: bash  # Use bash for cross-platform if conditions
 
+      # Set release name without 'v'
       - name: Set release name
         id: set_name
         run: echo "RELEASE_NAME=$(echo ${{ github.ref_name }} | sed 's/^v//')" >> $GITHUB_ENV
         shell: bash
 
-      - name: Archive the executable
+      # Archive executable
+      - name: Archive executable
         run: |
           mkdir -p release
           mv dist/* release/
           ls -l release/
 
+      # Upload artifact
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -59,6 +69,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      # Create GitHub release
       - name: Create GitHub Release
         id: create_release
         uses: actions/create-release@v1
@@ -70,21 +81,15 @@ jobs:
           draft: false
           prerelease: false
 
+      # Download build artifacts
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Upload Linux artifact
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/${{ env.RELEASE_NAME }}-ubuntu-latest/tg-cli
-          asset_name: tg-cli-linux
-
+      # Upload Windows artifact
       - name: Upload Windows artifact
+        if: always()
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -93,7 +98,20 @@ jobs:
           asset_path: artifacts/${{ env.RELEASE_NAME }}-windows-latest/tg-cli.exe
           asset_name: tg-cli-windows.exe
 
+      # Upload Linux artifact
+      - name: Upload Linux artifact
+        if: always()
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/${{ env.RELEASE_NAME }}-ubuntu-latest/tg-cli
+          asset_name: tg-cli-linux
+
+      # Upload macOS artifact
       - name: Upload macOS artifact
+        if: always()
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
