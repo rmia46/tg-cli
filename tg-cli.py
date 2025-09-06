@@ -26,6 +26,7 @@ import asyncio
 import sys
 import os
 import re
+import random
 from telethon import TelegramClient, events
 from telethon.tl.types import User, Channel, Chat
 from rich.console import Console
@@ -36,6 +37,7 @@ from dotenv import load_dotenv
 from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.completion import WordCompleter
+from code_templates import CODE_TEMPLATES
 
 # ==================== CONFIGURATION ====================
 # Load environment variables from the .env file
@@ -66,6 +68,7 @@ SESSION_NAME = 'cli_session'
 # Global state variables for the chat session and display
 current_peer_entity = None
 is_code_mode = False
+current_language = "c" # Default language is C
 client = None
 
 # ==================== UTILITY FUNCTIONS ====================
@@ -78,42 +81,55 @@ def get_formatted_time():
     """Returns the current timestamp in HH:MM:SS format."""
     return datetime.now().strftime('%H:%M:%S')
 
-def encode_to_c_code(message):
-    """Encodes a message into a C program template."""
-    # Escape double quotes to prevent breaking the C string
-    escaped_message = message.replace('"', '\\"')
-    c_code = f"""#include <stdio.h>
-
-int main() {{
-    printf("{escaped_message}\\n");
-    return 0;
-}}
-"""
+def encode_message(message, lang):
+    """
+    Encodes a message into a randomized code template for a given language.
+    The message is passed to a function within the code.
+    """
+    if lang not in CODE_TEMPLATES:
+        return f"```\nError: No templates found for language '{lang}'.\n```"
+    
+    # Get a random template for the selected language
+    selected_template = random.choice(CODE_TEMPLATES[lang])
+    
+    # Escape characters based on the language
+    if lang in ["c", "cpp"]:
+        escaped_message = message.replace('"', '\\"')
+    elif lang == "java":
+        escaped_message = message.replace('"', '\\"').replace('\\', '\\\\')
+    else: # For python and others, minimal escaping is needed
+        escaped_message = message
+        
+    # Replace the placeholder with the escaped message
+    formatted_code = selected_template.replace("{{message}}", escaped_message)
+    
     # Wrap the code in markdown for nice formatting
-    return f"```c\n{c_code}\n```"
+    return f"```{lang}\n{formatted_code}\n```"
 
 def show_help():
     """Prints the list of available commands."""
     console.print("\n[bold]Available Commands:[/bold]")
     console.print("  [yellow]/chat <username/phone>[/yellow] - Start a new chat session.")
-    console.print("  [yellow]/togglecode[/yellow] - Toggle C code encoding mode.")
+    console.print("  [yellow]/togglecode[/yellow] - Toggle code encoding mode.")
+    console.print("  [yellow]/lang <c|cpp|java|python>[/yellow] - Change the encoding language.")
     console.print("  [yellow]/photo <file_path>[/yellow] - Send a photo from a file.")
     console.print("  [yellow]/back[/yellow] - Return to peer selection from an active chat.")
     console.print("  [yellow]/help[/yellow] - Show this help message.")
     console.print("  [yellow]/exit[/yellow] - Log out and exit the client.")
     console.print("\n[info]Messages from other chats will appear as notifications.[/info]")
+    console.print(f"[info]Current language: {current_language.upper()}[/info]")
 
 # ==================== MAIN LOGIC FUNCTIONS ====================
 
 async def chat_with_peer(peer_entity, session):
     """Manages the interactive chat session with a specific peer."""
-    global is_code_mode, current_peer_entity
+    global is_code_mode, current_peer_entity, current_language
     
     current_peer_entity = peer_entity
     peer_name = getattr(peer_entity, "first_name", None) or "Unknown"
     
     console.print(f"\n[bold yellow]Chat session with {peer_name} started.[/bold yellow]")
-    console.print("[info]Commands: /back, /togglecode, /photo <file>, /help[/info]\n")
+    console.print("[info]Commands: /back, /togglecode, /lang, /photo, /help[/info]\n")
 
     while True:
         try:
@@ -136,7 +152,19 @@ async def chat_with_peer(peer_entity, session):
         elif user_input.lower() == "/togglecode":
             is_code_mode = not is_code_mode
             status = "ON" if is_code_mode else "OFF"
-            console.print(f"[info]Code mode {status}[/info]")
+            console.print(f"[info]Code mode {status}. Current language: {current_language.upper()}[/info]")
+            continue
+            
+        elif user_input.lower().startswith("/lang"):
+            try:
+                lang = user_input.split(" ", 1)[1].lower()
+                if lang in CODE_TEMPLATES:
+                    current_language = lang
+                    console.print(f"[info]Language set to {lang.upper()}[/info]")
+                else:
+                    console.print(f"[error]Unsupported language: {lang}. Supported languages are: {', '.join(CODE_TEMPLATES.keys())}[/error]")
+            except IndexError:
+                console.print("[error]Usage: /lang <c|cpp|java|python>[/error]")
             continue
 
         elif user_input.lower().startswith("/photo"):
@@ -155,7 +183,7 @@ async def chat_with_peer(peer_entity, session):
             show_help()
             continue
 
-        message_to_send = encode_to_c_code(user_input) if is_code_mode else user_input
+        message_to_send = encode_message(user_input, current_language) if is_code_mode else user_input
         await client.send_message(peer_entity, message_to_send)
         console.print(f"[outgoing][{get_formatted_time()}] You: {user_input}[/outgoing]")
 
@@ -182,10 +210,10 @@ async def handle_new_message(event):
 
 async def main():
     global client
-    
+    global current_language
     session = PromptSession(
         lexer=None, # Keep this as None for plain text input
-        completer=WordCompleter(['/chat', '/exit', '/help'], ignore_case=True),
+        completer=WordCompleter(['/chat', '/exit', '/help', '/lang', '/togglecode'], ignore_case=True),
         complete_while_typing=True
     )
     
@@ -199,7 +227,7 @@ async def main():
 
         while True:
             try:
-                user_input = await session.prompt_async("[prompt]TG> ")
+                user_input = await session.prompt_async(f"[prompt]TG ({current_language.upper()})> ")
             except (EOFError, KeyboardInterrupt):
                 break
                 
@@ -222,6 +250,22 @@ async def main():
                         console.print("[error]That’s not a valid user.[/error]")
                 except Exception as e:
                     console.print(f"[error]Failed to open chat: {e}[/error]")
+            elif user_input.lower().startswith("/lang"):
+                try:
+                    lang = user_input.split(" ", 1)[1].lower()
+                    if lang in CODE_TEMPLATES:
+                        current_language = lang
+                        console.print(f"[info]Language set to {lang.upper()}[/info]")
+                    else:
+                        console.print(f"[error]Unsupported language: {lang}. Supported languages are: {', '.join(CODE_TEMPLATES.keys())}[/error]")
+                except IndexError:
+                    console.print("[error]Usage: /lang <c|cpp|java|python>[/error]")
+            elif user_input.lower() == "/togglecode":
+                is_code_mode = not is_code_mode
+                status = "ON" if is_code_mode else "OFF"
+                console.print(f"[info]Code mode {status}. Current language: {current_language.upper()}[/info]")
+            else:
+                console.print("[error]Invalid command. Type /help to see all commands.[/error]")
 
         await client.disconnect()
         console.print("[info]Client disconnected.[/info]")
