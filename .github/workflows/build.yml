@@ -1,0 +1,77 @@
+name: Build and Release Binarieson:push:tags:- 'v*' # Trigger the workflow when a new tag is pushed (e.g., v1.0.0)jobs:build:strategy:matrix:os: [ubuntu-latest, windows-latest, macos-latest]python-version: ['3.11']runs-on: ${{ matrix.os }}
+
+steps:
+  - name: Checkout code
+    uses: actions/checkout@v4
+
+  - name: Set up Python
+    uses: actions/setup-python@v5
+    with:
+      python-version: ${{ matrix.python-version }}
+
+  - name: Install dependencies
+    run: |
+      python -m pip install --upgrade pip
+      pip install pyinstaller telethon rich python-dotenv prompt-toolkit
+
+  - name: Build with PyInstaller
+    # The syntax for --add-data differs between Windows and Linux/macOS
+    # On Windows, it's separated by a semicolon (;)
+    # On Linux/macOS, it's separated by a colon (:)
+    if: startsWith(matrix.os, 'windows')
+    run: pyinstaller tg_cli.py --onefile --name tg-cli --add-data "code_templates.py;." --add-data "emoji_map.py;."
+    
+  - name: Build with PyInstaller (Linux/macOS)
+    if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'macos')
+    run: pyinstaller tg_cli.py --onefile --name tg-cli --add-data "code_templates.py:." --add-data "emoji_map.py:."
+
+  - name: Set Release name
+    id: set_name
+    run: echo "RELEASE_NAME=$(echo ${{ github.ref_name }} | sed 's/^v//')" >> $GITHUB_ENV
+    shell: bash
+  
+  - name: Archive the executable
+    run: |
+      mkdir -p release
+      mv dist/* release/
+      ls -l release/
+
+  - name: Upload artifact
+    uses: actions/upload-artifact@v4
+    with:
+      name: ${{ env.RELEASE_NAME }}-${{ matrix.os }}
+      path: release/
+create-release:needs: buildruns-on: ubuntu-lateststeps:- name: Create Releaseid: create_releaseuses: actions/create-release@v1env:GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}with:tag_name: ${{ github.ref }}release_name: Release ${{ github.ref_name }}draft: falseprerelease: false  - name: Download all build artifacts
+    uses: actions/download-artifact@v4
+    with:
+      path: artifacts
+
+  - name: List files to debug
+    run: ls -R artifacts
+    
+  - name: Upload Linux artifact
+    uses: actions/upload-release-asset@v1
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    with:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      asset_path: artifacts/v${{ env.RELEASE_NAME }}-ubuntu-latest/tg-cli
+      asset_name: tg-cli-linux
+
+  - name: Upload Windows artifact
+    uses: actions/upload-release-asset@v1
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    with:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      asset_path: artifacts/v${{ env.RELEASE_NAME }}-windows-latest/tg-cli.exe
+      asset_name: tg-cli-windows.exe
+
+  - name: Upload macOS artifact
+    uses: actions/upload-release-asset@v1
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    with:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      asset_path: artifacts/v${{ env.RELEASE_NAME }}-macos-latest/tg-cli
+      asset_name: tg-cli-macos
