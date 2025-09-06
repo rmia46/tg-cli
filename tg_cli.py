@@ -27,6 +27,7 @@ import sys
 import os
 import re
 import random
+import base64
 from telethon import TelegramClient, events
 from telethon.tl.types import User, Channel, Chat
 from rich.console import Console
@@ -34,6 +35,7 @@ from rich.theme import Theme
 from rich.text import Text
 from rich.panel import Panel
 from rich.rule import Rule
+from rich.syntax import Syntax
 from datetime import datetime
 from dotenv import load_dotenv
 from prompt_toolkit import PromptSession
@@ -75,6 +77,7 @@ SESSION_NAME = 'cli_session'
 # Global state variables for the chat session and display
 current_peer_entity = None
 is_code_mode = False
+is_cloak_mode = False
 current_language = "c" # Default language is C
 client = None
 
@@ -93,6 +96,12 @@ def emojify_message(message):
     for code, emoji in EMOJI_MAP.items():
         message = message.replace(code, emoji)
     return message
+
+def cloak_message(message):
+    """Encodes a message for display in cloak mode."""
+    # A simple, reversible encoding.
+    encoded_bytes = base64.b64encode(message.encode('utf-8'))
+    return f"[dim white]Encoded Phrase: {encoded_bytes.decode('utf-8')}[/dim white]"
 
 def encode_message(message, lang):
     """
@@ -125,6 +134,7 @@ def show_help():
     console.print("\n[bold]Available Commands:[/bold]")
     console.print("  [yellow]/chat <username/phone>[/yellow] - Start a new chat session.")
     console.print("  [yellow]/togglecode[/yellow] - Toggle code encoding mode.")
+    console.print("  [yellow]/togglecloak[/yellow] - Toggle cloak mode for your messages.")
     console.print("  [yellow]/lang <c|cpp|java|python>[/yellow] - Change the encoding language.")
     console.print("  [yellow]/photo <file_path>[/yellow] - Send a photo from a file.")
     console.print("  [yellow]/back[/yellow] - Return to peer selection from an active chat.")
@@ -146,7 +156,7 @@ class DynamicCompleter(Completer):
         
         # Command completion
         if text_before_cursor.startswith('/') and len(words) == 1:
-            commands = ['/chat', '/togglecode', '/lang', '/photo', '/back', '/help', '/exit']
+            commands = ['/chat', '/togglecode', '/togglecloak', '/lang', '/photo', '/back', '/help', '/exit']
             for cmd in commands:
                 if cmd.startswith(text_before_cursor):
                     yield Completion(cmd, start_position=-len(text_before_cursor))
@@ -176,14 +186,14 @@ class DynamicCompleter(Completer):
 
 async def chat_with_peer(peer_entity, session):
     """Manages the interactive chat session with a specific peer."""
-    global is_code_mode, current_peer_entity, current_language
+    global is_code_mode, is_cloak_mode, current_peer_entity, current_language
     
     current_peer_entity = peer_entity
     peer_name = getattr(peer_entity, "first_name", None) or "Unknown"
     
     # Fancy panel for starting chat session
-    panel_title = f"[bold green]Chatting with: {peer_name}[/bold green]"
-    panel_content = Text.from_markup("[info]Commands: /back, /togglecode, /lang, /photo, /help[/info]\n")
+    panel_title = f"[bold green]Session with: {peer_name}[/bold green]"
+    panel_content = Text.from_markup("[info]Commands: /back, /togglecode, /togglecloak, /lang, /photo, /help[/info]\n")
     chat_panel = Panel(panel_content, title=panel_title, border_style="matrix_panel")
     console.print(chat_panel)
 
@@ -211,6 +221,12 @@ async def chat_with_peer(peer_entity, session):
             console.print(f"[info]Code mode {status}. Current language: {current_language.upper()}[/info]")
             continue
             
+        elif user_input.lower() == "/togglecloak":
+            is_cloak_mode = not is_cloak_mode
+            status = "ON" if is_cloak_mode else "OFF"
+            console.print(f"[info]Cloak mode {status}.[/info]")
+            continue
+
         elif user_input.lower().startswith("/lang"):
             try:
                 lang = user_input.split(" ", 1)[1].lower()
@@ -228,7 +244,7 @@ async def chat_with_peer(peer_entity, session):
                 file_path = user_input.split(" ", 1)[1]
                 if os.path.exists(file_path):
                     await client.send_file(peer_entity, file_path)
-                    console.print(f"[outgoing][{get_formatted_time()}] You: [Photo sent][/outgoing]")
+                    console.print(f"[outgoing][{get_formatted_time()}] Yu: [Photo sent][/outgoing]")
                 else:
                     console.print(f"[error]File not found: {file_path}[/error]")
             except IndexError:
@@ -242,11 +258,27 @@ async def chat_with_peer(peer_entity, session):
         # Autocorrect emojis before sending the message
         emojified_input = emojify_message(user_input)
         
-        message_to_send = encode_message(emojified_input, current_language) if is_code_mode else emojified_input
-        await client.send_message(peer_entity, message_to_send)
+        # Determine the message to send and the message to display locally
+        message_to_send = emojified_input
         
-        # Display the emojified message in your local console for consistency
-        console.print(f"[outgoing][{get_formatted_time()}] You: {emojified_input}[/outgoing]")
+        if is_code_mode and is_cloak_mode:
+            # When both modes are active, send the code but only show "Delivered" locally
+            message_to_send = encode_message(emojified_input, current_language)
+            console.print(f"[outgoing][{get_formatted_time()}] Yu: [Delivered][/outgoing]")
+        elif is_code_mode:
+            # If only code mode is active, send the code and display it locally
+            message_to_send = encode_message(emojified_input, current_language)
+            encoded_syntax = Syntax(message_to_send, current_language, theme="monokai", word_wrap=True)
+            console.print(f"[outgoing][{get_formatted_time()}] Yu: [/outgoing]", encoded_syntax)
+        elif is_cloak_mode:
+            # If only cloak mode is active, send the plain message and display it encoded
+            cloaked_message = cloak_message(emojified_input)
+            console.print(f"[outgoing][{get_formatted_time()}] Yu: {cloaked_message}[/outgoing]")
+        else:
+            # If neither mode is active, send and display the plain message
+            console.print(f"[outgoing][{get_formatted_time()}] Yu: {emojified_input}[/outgoing]")
+            
+        await client.send_message(peer_entity, message_to_send)
 
 async def handle_new_message(event):
     """Event handler for new incoming messages."""
@@ -270,7 +302,8 @@ async def handle_new_message(event):
     console.print(formatted_message)
 
 async def main():
-    global client, current_language
+    # Correctly declare global variables to modify them inside this function
+    global client, current_language, is_code_mode, is_cloak_mode
 
     # --- NEW LOGIC FOR .ENV FILE CREATION ---
     if not os.path.exists(".env"):
@@ -340,6 +373,11 @@ async def main():
                     # The prompt is now a rich.Text object
                     prompt_text = Text()
                     prompt_text.append(f"TG ({current_language.upper()})", style="prompt_static")
+                    # Dynamically add status indicators to the prompt
+                    if is_code_mode:
+                        prompt_text.append(" [CODE]", style="bold green")
+                    if is_cloak_mode:
+                        prompt_text.append(" [CLOAK]", style="bold magenta")
                     prompt_text.append(" > ", style="prompt_dynamic")
                     user_input = await session.prompt_async(prompt_text.plain)
                 except (EOFError, KeyboardInterrupt):
@@ -374,16 +412,23 @@ async def main():
                             console.print(f"[error]Unsupported language: {lang}. Supported languages are: {', '.join(CODE_TEMPLATES.keys())}[/error]")
                     except IndexError:
                         console.print("[error]Usage: /lang <c|cpp|java|python>[/error]")
+                    continue
                 elif user_input.lower() == "/togglecode":
                     is_code_mode = not is_code_mode
                     status = "ON" if is_code_mode else "OFF"
                     console.print(f"[info]Code mode {status}. Current language: {current_language.upper()}[/info]")
+                    continue
+                elif user_input.lower() == "/togglecloak":
+                    is_cloak_mode = not is_cloak_mode
+                    status = "ON" if is_cloak_mode else "OFF"
+                    console.print(f"[info]Cloak mode {status}.[/info]")
+                    continue
                 else:
                     console.print("[error]Invalid command. Type /help to see all commands.[/error]")
     
     finally:
         # This block ensures the client disconnects gracefully,
-        # releasing the lock on the session file
+        # releasing the lock on the session filea
         if client:
             await client.disconnect()
             console.print("[info]Client disconnected.[/info]")
