@@ -32,6 +32,8 @@ from telethon.tl.types import User, Channel, Chat
 from rich.console import Console
 from rich.theme import Theme
 from rich.text import Text
+from rich.panel import Panel
+from rich.rule import Rule
 from datetime import datetime
 from dotenv import load_dotenv
 from prompt_toolkit import PromptSession
@@ -56,7 +58,9 @@ cli_theme = Theme({
     "outgoing": "green",
     "timestamp": "dim white",
     "error": "bold red",
-    "notification": "yellow"
+    "notification": "yellow",
+    "matrix_panel": "bold green on black",
+    "welcome_gradient": "bold rgb(0,255,0) on black",
 })
 
 # Initialize the Rich Console with the custom theme
@@ -128,15 +132,18 @@ async def chat_with_peer(peer_entity, session):
     current_peer_entity = peer_entity
     peer_name = getattr(peer_entity, "first_name", None) or "Unknown"
     
-    console.print(f"\n[bold yellow]Chat session with {peer_name} started.[/bold yellow]")
-    console.print("[info]Commands: /back, /togglecode, /lang, /photo, /help[/info]\n")
+    # Fancy panel for starting chat session
+    panel_title = f"[bold green]Chatting with: {peer_name}[/bold green]"
+    panel_content = Text.from_markup("[info]Commands: /back, /togglecode, /lang, /photo, /help[/info]\n")
+    chat_panel = Panel(panel_content, title=panel_title, border_style="matrix_panel")
+    console.print(chat_panel)
 
     while True:
         try:
             user_input = await session.prompt_async("[prompt]> ")
         except (EOFError, KeyboardInterrupt):
             current_peer_entity = None
-            console.print("[info]Exiting chat session.[/info]\n")
+            console.print(f"\n[info]Exiting chat session with {peer_name}.[/info]\n")
             break
         
         user_input = user_input.strip()
@@ -209,8 +216,8 @@ async def handle_new_message(event):
     console.print(formatted_message)
 
 async def main():
-    global client
-    global current_language
+    global client, current_language
+    
     session = PromptSession(
         lexer=None, # Keep this as None for plain text input
         completer=WordCompleter(['/chat', '/exit', '/help', '/lang', '/togglecode'], ignore_case=True),
@@ -222,6 +229,11 @@ async def main():
         await client.start()
         client.add_event_handler(handle_new_message, events.NewMessage)
 
+        # Fancy welcome message
+        welcome_text = Text("Welcome to the CLI Telegram Client", style="welcome_gradient")
+        console.print(Panel(welcome_text, title="🟢 🟢 🟢", title_align="right", border_style="matrix_panel"))
+        console.print(Rule(style="matrix_panel"))
+        
         console.print("[info]Logged in successfully![/info]")
         console.print("Type /chat <username or phone> to start a chat. /exit to quit.\n")
 
