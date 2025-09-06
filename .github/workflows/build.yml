@@ -93,7 +93,6 @@ jobs:
 
       # Upload Windows artifact
       - name: Upload Windows artifact
-        if: exists('artifacts/windows-latest/tg-cli.exe')
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -105,7 +104,6 @@ jobs:
 
       # Upload Linux artifact
       - name: Upload Linux artifact
-        if: exists('artifacts/ubuntu-latest/tg-cli')
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -117,7 +115,6 @@ jobs:
 
       # Upload macOS artifact
       - name: Upload macOS artifact
-        if: exists('artifacts/macos-latest/tg-cli')
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
