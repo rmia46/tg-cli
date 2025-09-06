@@ -3,8 +3,8 @@ name: Build and Release Binaries
 on:
   push:
     tags:
-      - 'v*'  # Trigger on tag pushes like v1.0.0
-  workflow_dispatch:  # Allows manual runs
+      - 'v*'  # Trigger on tags like v1.0.0
+  workflow_dispatch:  # Manual trigger for testing
 
 permissions:
   contents: write  # Required to create releases and upload assets
@@ -22,7 +22,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history for PyInstaller
+          fetch-depth: 0
 
       # Set up Python
       - name: Set up Python
@@ -46,12 +46,6 @@ jobs:
           fi
         shell: bash
 
-      # Set release name without 'v'
-      - name: Set release name
-        id: set_name
-        run: echo "RELEASE_NAME=$(echo ${{ github.ref_name }} | sed 's/^v//')" >> $GITHUB_ENV
-        shell: bash
-
       # Archive executable
       - name: Archive executable
         run: |
@@ -59,21 +53,31 @@ jobs:
           mv dist/* release/
           ls -l release/
 
-      # Upload artifact
+      # Upload artifacts
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.RELEASE_NAME }}-${{ matrix.os }}
+          name: ${{ matrix.os }}
           path: release/
 
   release:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      # Set release name in this job
+      # Checkout code (needed for workflow context)
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Set release name
       - name: Set release name
         run: echo "RELEASE_NAME=$(echo ${{ github.ref_name }} | sed 's/^v//')" >> $GITHUB_ENV
         shell: bash
+
+      # Download all artifacts from build job
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
 
       # Create GitHub Release
       - name: Create GitHub Release
@@ -87,44 +91,38 @@ jobs:
           draft: false
           prerelease: false
 
-      # Download all build artifacts
-      - name: Download all build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
       # Upload Windows artifact
       - name: Upload Windows artifact
-        if: always()
+        if: exists('artifacts/windows-latest/tg-cli.exe')
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/${{ env.RELEASE_NAME }}-windows-latest/tg-cli.exe
+          asset_path: artifacts/windows-latest/tg-cli.exe
           asset_name: tg-cli-windows.exe
           asset_content_type: application/octet-stream
 
       # Upload Linux artifact
       - name: Upload Linux artifact
-        if: always()
+        if: exists('artifacts/ubuntu-latest/tg-cli')
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/${{ env.RELEASE_NAME }}-ubuntu-latest/tg-cli
+          asset_path: artifacts/ubuntu-latest/tg-cli
           asset_name: tg-cli-linux
           asset_content_type: application/octet-stream
 
       # Upload macOS artifact
       - name: Upload macOS artifact
-        if: always()
+        if: exists('artifacts/macos-latest/tg-cli')
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/${{ env.RELEASE_NAME }}-macos-latest/tg-cli
+          asset_path: artifacts/macos-latest/tg-cli
           asset_name: tg-cli-macos
           asset_content_type: application/octet-stream
