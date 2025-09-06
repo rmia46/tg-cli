@@ -14,14 +14,14 @@ steps:
       python -m pip install --upgrade pip
       pip install pyinstaller telethon rich python-dotenv prompt-toolkit
 
-  - name: Build with PyInstaller
+  - name: Build with PyInstaller (Windows)
     # The syntax for --add-data differs between Windows and Linux/macOS
     # On Windows, it's separated by a semicolon (;)
-    # On Linux/macOS, it's separated by a colon (:)
     if: startsWith(matrix.os, 'windows')
     run: pyinstaller tg_cli.py --onefile --name tg-cli --add-data "code_templates.py;." --add-data "emoji_map.py;."
     
   - name: Build with PyInstaller (Linux/macOS)
+    # On Linux/macOS, it's separated by a colon (:)
     if: startsWith(matrix.os, 'ubuntu') || startsWith(matrix.os, 'macos')
     run: pyinstaller tg_cli.py --onefile --name tg-cli --add-data "code_templates.py:." --add-data "emoji_map.py:."
 
@@ -55,7 +55,7 @@ create-release:needs: buildruns-on: ubuntu-lateststeps:- name: Create Releaseid:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     with:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
-      asset_path: artifacts/v${{ env.RELEASE_NAME }}-ubuntu-latest/tg-cli
+      asset_path: artifacts/${{ env.RELEASE_NAME }}-ubuntu-latest/tg-cli
       asset_name: tg-cli-linux
 
   - name: Upload Windows artifact
@@ -64,7 +64,7 @@ create-release:needs: buildruns-on: ubuntu-lateststeps:- name: Create Releaseid:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     with:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
-      asset_path: artifacts/v${{ env.RELEASE_NAME }}-windows-latest/tg-cli.exe
+      asset_path: artifacts/${{ env.RELEASE_NAME }}-windows-latest/tg-cli.exe
       asset_name: tg-cli-windows.exe
 
   - name: Upload macOS artifact
@@ -73,5 +73,5 @@ create-release:needs: buildruns-on: ubuntu-lateststeps:- name: Create Releaseid:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     with:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
-      asset_path: artifacts/v${{ env.RELEASE_NAME }}-macos-latest/tg-cli
+      asset_path: artifacts/${{ env.RELEASE_NAME }}-macos-latest/tg-cli
       asset_name: tg-cli-macos
