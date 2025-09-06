@@ -101,6 +101,7 @@ def encode_message(message, lang):
     """
     if lang not in CODE_TEMPLATES:
         return f"```\nError: No templates found for language '{lang}'.\n```"
+
     
     # Get a random template for the selected language
     selected_template = random.choice(CODE_TEMPLATES[lang])
@@ -270,7 +271,47 @@ async def handle_new_message(event):
 
 async def main():
     global client, current_language
-    
+
+    # --- NEW LOGIC FOR .ENV FILE CREATION ---
+    if not os.path.exists(".env"):
+        panel_content = Text.from_markup(
+            "[bold red]Configuration Required![/bold red]\n\n"
+            "This application needs your Telegram API credentials. You'll need to create a .env file.\n"
+            "Go to [link=https://my.telegram.org]my.telegram.org[/link] to get your API ID and API Hash.\n\n"
+            "Please enter your credentials below:"
+        )
+        console.print(Panel(panel_content, title="⚠️ Initial Setup", border_style="bold red"))
+        
+        try:
+            api_id = input("Enter your API_ID: ").strip()
+            api_hash = input("Enter your API_HASH: ").strip()
+            
+            with open(".env", "w") as f:
+                f.write(f"API_ID={api_id}\n")
+                f.write(f"API_HASH={api_hash}\n")
+            
+            console.print("[info]Successfully created .env file![/info]")
+            # Reload environment variables from the new file
+            load_dotenv()
+        except Exception as e:
+            console.print(f"[error]Failed to create .env file: {e}[/error]")
+            sys.exit(1)
+            
+    # Load API keys from the .env file
+    API_ID = int(os.getenv('API_ID', '0'))
+    API_HASH = os.getenv('API_HASH', '')
+
+    # Check if the API keys are valid after the file has been created and reloaded
+    if not API_ID or not API_HASH or API_ID == 0:
+        console.print(Panel(
+            "[bold red]API credentials are still missing or invalid.[/bold red]\n"
+            "Please check the .env file and try again.",
+            title="⚠️ Error",
+            border_style="bold red"
+        ))
+        sys.exit(1)
+    # --- END OF NEW LOGIC ---
+
     completer = DynamicCompleter()
     session = PromptSession(
         lexer=None, # Keep this as None for plain text input
@@ -278,70 +319,78 @@ async def main():
         complete_while_typing=True,
     )
     
-    with patch_stdout(raw=True):
-        client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
-        await client.start()
-        client.add_event_handler(handle_new_message, events.NewMessage)
+    # Wrap the entire main logic in a try...finally block
+    # to ensure the client is always disconnected
+    try:
+        with patch_stdout(raw=True):
+            client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
+            await client.start()
+            client.add_event_handler(handle_new_message, events.NewMessage)
 
-        # Fancy welcome message
-        welcome_text = Text("Welcome to the CLI Telegram Client", style="welcome_gradient")
-        console.print(Panel(welcome_text, title="🟢 🟢 🟢", title_align="right", border_style="matrix_panel"))
-        console.print(Rule(style="matrix_panel"))
-        
-        console.print("[info]Logged in successfully![/info]")
-        console.print("Type /chat <username or phone> to start a chat. /exit to quit.\n")
+            # Fancy welcome message
+            welcome_text = Text("Welcome to the CLI Telegram Client", style="welcome_gradient")
+            console.print(Panel(welcome_text, title="🟢 🟢 🟢", title_align="right", border_style="matrix_panel"))
+            console.print(Rule(style="matrix_panel"))
+            
+            console.print("[info]Logged in successfully![/info]")
+            console.print("Type /chat <username or phone> to start a chat. /exit to quit.\n")
 
-        while True:
-            try:
-                # The prompt is now a rich.Text object
-                prompt_text = Text()
-                prompt_text.append(f"TG ({current_language.upper()})", style="prompt_static")
-                prompt_text.append(" > ", style="prompt_dynamic")
-                user_input = await session.prompt_async(prompt_text.plain)
-            except (EOFError, KeyboardInterrupt):
-                break
-                
-            user_input = user_input.strip()
-
-            if not user_input:
-                continue
-            if user_input.lower() == "/exit":
-                break
-            if user_input.lower() == "/help":
-                show_help()
-                continue
-            if user_input.lower().startswith("/chat"):
+            while True:
                 try:
-                    target = user_input.split(" ", 1)[1]
-                    peer = await client.get_entity(target)
-                    if isinstance(peer, User):
-                        await chat_with_peer(peer, session)
-                    else:
-                        console.print("[error]That’s not a valid user.[/error]")
-                except Exception as e:
-                    console.print(f"[error]Failed to open chat: {e}[/error]")
-            elif user_input.lower().startswith("/lang"):
-                try:
-                    lang = user_input.split(" ", 1)[1].lower()
-                    if lang in CODE_TEMPLATES:
-                        current_language = lang
-                        console.print(f"[info]Language set to {lang.upper()}[/info]")
-                    else:
-                        console.print(f"[error]Unsupported language: {lang}. Supported languages are: {', '.join(CODE_TEMPLATES.keys())}[/error]")
-                except IndexError:
-                    console.print("[error]Usage: /lang <c|cpp|java|python>[/error]")
-            elif user_input.lower() == "/togglecode":
-                is_code_mode = not is_code_mode
-                status = "ON" if is_code_mode else "OFF"
-                console.print(f"[info]Code mode {status}. Current language: {current_language.upper()}[/info]")
-            else:
-                console.print("[error]Invalid command. Type /help to see all commands.[/error]")
+                    # The prompt is now a rich.Text object
+                    prompt_text = Text()
+                    prompt_text.append(f"TG ({current_language.upper()})", style="prompt_static")
+                    prompt_text.append(" > ", style="prompt_dynamic")
+                    user_input = await session.prompt_async(prompt_text.plain)
+                except (EOFError, KeyboardInterrupt):
+                    break
+                    
+                user_input = user_input.strip()
 
-        await client.disconnect()
-        console.print("[info]Client disconnected.[/info]")
+                if not user_input:
+                    continue
+                if user_input.lower() == "/exit":
+                    break
+                if user_input.lower() == "/help":
+                    show_help()
+                    continue
+                if user_input.lower().startswith("/chat"):
+                    try:
+                        target = user_input.split(" ", 1)[1]
+                        peer = await client.get_entity(target)
+                        if isinstance(peer, User):
+                            await chat_with_peer(peer, session)
+                        else:
+                            console.print("[error]That’s not a valid user.[/error]")
+                    except Exception as e:
+                        console.print(f"[error]Failed to open chat: {e}[/error]")
+                elif user_input.lower().startswith("/lang"):
+                    try:
+                        lang = user_input.split(" ", 1)[1].lower()
+                        if lang in CODE_TEMPLATES:
+                            current_language = lang
+                            console.print(f"[info]Language set to {lang.upper()}[/info]")
+                        else:
+                            console.print(f"[error]Unsupported language: {lang}. Supported languages are: {', '.join(CODE_TEMPLATES.keys())}[/error]")
+                    except IndexError:
+                        console.print("[error]Usage: /lang <c|cpp|java|python>[/error]")
+                elif user_input.lower() == "/togglecode":
+                    is_code_mode = not is_code_mode
+                    status = "ON" if is_code_mode else "OFF"
+                    console.print(f"[info]Code mode {status}. Current language: {current_language.upper()}[/info]")
+                else:
+                    console.print("[error]Invalid command. Type /help to see all commands.[/error]")
+    
+    finally:
+        # This block ensures the client disconnects gracefully,
+        # releasing the lock on the session file
+        if client:
+            await client.disconnect()
+            console.print("[info]Client disconnected.[/info]")
 
 if __name__ == '__main__':
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
         console.print("[info]\nClient shut down by user.[/info]")
+
