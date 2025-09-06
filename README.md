@@ -37,8 +37,8 @@ A command-line Telegram client with a **Matrix-style interface**, emoji autocorr
 ### Clone & Install
 
 ```bash
-git clone https://github.com/your-username/tg-cli-project.git
-cd tg-cli-project
+git clone https://github.com/rmia46/tg-cli.git
+cd tg-cli
 ```
 # Install dependencies
 ```bash
